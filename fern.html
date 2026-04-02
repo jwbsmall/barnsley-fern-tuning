@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barnsley Fern</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --accent: #3a9020;
+  --bg:     #060806;
+  --panel:  #0b0d0b;
+  --border: #191c19;
+  --text:   #6a7a6a;
+  --radius: 5px;
+}
+
+html, body { height: 100%; overflow: hidden; background: var(--bg); }
+
+body {
+  display: flex;
+  color: var(--text);
+  font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+}
+
+/* ── Canvas area ─────────────────────────────────────────── */
+#wrap { flex: 1; position: relative; overflow: hidden; }
+#canvas { display: block; width: 100%; height: 100%; cursor: default; }
+
+#overlay {
+  position: absolute; top: 12px; left: 14px;
+  font-size: 10px; letter-spacing: 0.08em; color: #2a3a2a;
+  pointer-events: none; transition: color 0.4s;
+}
+#overlay.busy { color: #445044; }
+
+/* ── Side panel ──────────────────────────────────────────── */
+#panel {
+  width: 256px; flex-shrink: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; padding: 16px 14px;
+  gap: 20px;
+}
+
+#panel-title {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--accent);
+}
+
+.sec-label {
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: #242e24; margin-bottom: 10px;
+  padding-bottom: 6px; border-bottom: 1px solid #111511;
+}
+
+/* ── Sliders ─────────────────────────────────────────────── */
+.param { margin-bottom: 11px; }
+.param:last-child { margin-bottom: 0; }
+
+.param-row {
+  display: flex; justify-content: space-between;
+  margin-bottom: 5px;
+}
+.param-name { color: #567056; font-size: 12px; }
+.param-val  {
+  color: var(--accent); font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px; text-align: right;
+}
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 2px; border-radius: 1px;
+  outline: none; cursor: pointer;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 27%),
+    #1d221d      var(--fill, 27%)
+  );
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.25); }
+input[type=range]::-moz-range-thumb {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg);
+  cursor: pointer;
+}
+
+/* ── Button grids ────────────────────────────────────────── */
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+
+.btn {
+  padding: 6px 4px;
+  border: 1px solid #161c16; background: #0e130e;
+  color: #3a4a3a; font-size: 10px; letter-spacing: 0.04em;
+  cursor: pointer; border-radius: var(--radius);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  text-align: center;
+}
+.btn:hover { background: #141a14; color: #6a7a6a; border-color: #222c22; }
+.btn.active {
+  background: #0f1a0c; border-color: var(--accent); color: var(--accent);
+}
+
+/* special single-column button */
+.btn-wide { grid-column: 1 / -1; letter-spacing: 0.06em; color: #3a503a; }
+.btn-wide:hover { color: #8aaa7a; }
+
+/* ── Spacer / status ─────────────────────────────────────── */
+.push { margin-top: auto; }
+#status {
+  font-size: 9px; letter-spacing: 0.08em;
+  color: #202820; text-align: center;
+  padding-top: 8px;
+  border-top: 1px solid #111511;
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <canvas id="canvas"></canvas>
+  <div id="overlay" id="overlay">—</div>
+</div>
+
+<div id="panel">
+  <div id="panel-title">Barnsley Fern</div>
+
+  <!-- ── Shape ── -->
+  <section>
+    <div class="sec-label">Shape</div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Curl</span>
+        <span class="param-val" id="v-curl">0.27</span>
+      </div>
+      <input type="range" id="s-curl" min="0" max="1" step="0.01" value="0.27">
+    </div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Width</span>
+        <span class="param-val" id="v-width">0.50</span>
+      </div>
+      <input type="range" id="s-width" min="0" max="1" step="0.01" value="0.50">
+    </div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Lean</span>
+        <span class="param-val" id="v-lean">0.00</span>
+      </div>
+      <input type="range" id="s-lean" min="-1" max="1" step="0.01" value="0">
+    </div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Fullness</span>
+        <span class="param-val" id="v-fullness">0.50</span>
+      </div>
+      <input type="range" id="s-fullness" min="0" max="1" step="0.01" value="0.50">
+    </div>
+  </section>
+
+  <!-- ── Render ── -->
+  <section>
+    <div class="sec-label">Rendering</div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Points</span>
+        <span class="param-val" id="v-points">500K</span>
+      </div>
+      <input type="range" id="s-points" min="1" max="10" step="1" value="5">
+    </div>
+
+    <div class="param">
+      <div class="param-row">
+        <span class="param-name">Brightness</span>
+        <span class="param-val" id="v-brightness">0.70</span>
+      </div>
+      <input type="range" id="s-brightness" min="0.1" max="3" step="0.05" value="0.70">
+    </div>
+  </section>
+
+  <!-- ── Colour ── -->
+  <section>
+    <div class="sec-label">Colour</div>
+    <div class="btn-grid" id="theme-grid">
+      <button class="btn active" data-theme="Forest">Forest</button>
+      <button class="btn"        data-theme="Autumn">Autumn</button>
+      <button class="btn"        data-theme="Arctic">Arctic</button>
+      <button class="btn"        data-theme="Twilight">Twilight</button>
+      <button class="btn"        data-theme="Ember">Ember</button>
+      <button class="btn"        data-theme="Gold">Gold</button>
+    </div>
+  </section>
+
+  <!-- ── Presets ── -->
+  <section>
+    <div class="sec-label">Presets</div>
+    <div class="btn-grid">
+      <button class="btn" data-preset="classic">Classic</button>
+      <button class="btn" data-preset="twisted">Twisted</button>
+      <button class="btn" data-preset="wide">Wide</button>
+      <button class="btn" data-preset="wispy">Wispy</button>
+      <button class="btn btn-wide" data-preset="random">Randomise</button>
+    </div>
+  </section>
+
+  <div class="push"></div>
+  <div id="status">open in browser</div>
+</div>
+
+<script>
+'use strict';
+
+// ── Colour themes ─────────────────────────────────────────────────
+// Each entry: [t, r, g, b]  (t = position 0–1)
+const THEMES = {
+  Forest:   [[0,[0,5,0]],[0.12,[3,18,2]],[0.35,[10,65,5]],[0.65,[35,138,14]],[1,[155,235,70]]],
+  Autumn:   [[0,[5,1,0]],[0.12,[38,5,0]],[0.35,[120,30,0]],[0.65,[205,90,0]],[1,[255,205,50]]],
+  Arctic:   [[0,[0,2,7]],[0.12,[0,10,30]],[0.35,[0,48,100]],[0.65,[15,130,195]],[1,[165,230,255]]],
+  Twilight: [[0,[2,0,7]],[0.12,[18,0,50]],[0.35,[75,0,155]],[0.65,[170,0,240]],[1,[255,185,255]]],
+  Ember:    [[0,[5,0,0]],[0.12,[42,0,0]],[0.35,[135,18,0]],[0.65,[225,75,0]],[1,[255,205,25]]],
+  Gold:     [[0,[4,3,0]],[0.12,[28,16,0]],[0.35,[95,55,0]],[0.65,[180,128,8]],[1,[255,222,95]]],
+};
+
+const ACCENTS = {
+  Forest:'#3a9020', Autumn:'#bb4e00', Arctic:'#007aaa',
+  Twilight:'#9800d8', Ember:'#c02400', Gold:'#a87000',
+};
+
+const BGS = {
+  Forest:[0,4,0], Autumn:[4,1,0], Arctic:[0,1,5],
+  Twilight:[2,0,6], Ember:[4,0,0], Gold:[3,2,0],
+};
+
+// ── Presets ───────────────────────────────────────────────────────
+const PRESETS = {
+  classic: { curl:0.27, width:0.50, lean:0.00, fullness:0.50 },
+  twisted: { curl:0.78, width:0.62, lean:0.28, fullness:0.38 },
+  wide:    { curl:0.08, width:0.90, lean:0.00, fullness:0.32 },
+  wispy:   { curl:0.40, width:0.25, lean:0.00, fullness:0.70 },
+};
+
+const POINT_LABELS = ['50K','100K','200K','350K','500K','750K','1M','1.5M','2M','3M'];
+const POINT_COUNTS = [50e3, 100e3, 200e3, 350e3, 500e3, 750e3, 1e6, 1.5e6, 2e6, 3e6];
+
+// ── State ─────────────────────────────────────────────────────────
+let state = { curl:0.27, width:0.50, lean:0.00, fullness:0.50, points:5, brightness:0.70 };
+let theme = 'Forest';
+
+// ── Canvas setup ──────────────────────────────────────────────────
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+
+function resizeCanvas() {
+  const wrap = document.getElementById('wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+
+// ── IFS core ──────────────────────────────────────────────────────
+function buildTransforms(curl, lean, width, fullness) {
+  // Map sliders to IFS matrix parameters
+  //   curl    → rotation amount in body transform (f2.b / f2.c)
+  //   lean    → shear added to body transform (tilts the whole fern)
+  //   width   → scale factor on frond x-coefficients
+  //   fullness→ probability split: body vs side-fronds
+
+  const curlV  = curl * 0.15;           // 0 → 0,  1 → 0.15
+  const leanV  = lean * 0.10;           // -1 → -0.10, +1 → +0.10
+  const fScale = 0.30 + width * 1.40;   // 0 → 0.30, 1 → 1.70  (1.0 = classic)
+  const pBody  = 0.78 + fullness * 0.14;// 0 → 0.78, 1 → 0.92
+  const pStem  = 0.01;
+  const pFrond = (1.0 - pBody - pStem) * 0.5;
+
+  // [a, b, c, d, e, f, prob]
+  //   x' = a·x + b·y + e
+  //   y' = c·x + d·y + f
+  return [
+    [0,            0,               0,    0.16, 0, 0.00, pStem  ],  // stem
+    [0.85, curlV+leanV, -curlV+leanV, 0.85, 0, 1.60, pBody  ],  // main body
+    [ 0.20*fScale, -0.26*fScale,  0.23, 0.22, 0, 1.60, pFrond ],  // left frond
+    [-0.15*fScale,  0.28*fScale,  0.26, 0.24, 0, 0.44, pFrond ],  // right frond
+  ];
+}
+
+// Fast LCG random number generator (much faster than Math.random in tight loops)
+function makeLCG(seed) {
+  let s = (seed ^ 0xdeadbeef) >>> 0;
+  return () => {
+    s = Math.imul(1664525, s) + 1013904223 >>> 0;
+    return s / 0x100000000;
+  };
+}
+
+function runIFS(n, transforms) {
+  const rng = makeLCG(Date.now() ^ (Math.random() * 0xffffffff));
+
+  // Normalise probabilities and build cumulative thresholds
+  let total = 0;
+  for (const t of transforms) total += t[6];
+  let c = 0;
+  const thresh = transforms.map(t => { c += t[6] / total; return c; });
+
+  const xs = new Float32Array(n);
+  const ys = new Float32Array(n);
+  let x = 0, y = 0;
+
+  for (let i = 0; i < n; i++) {
+    const r = rng();
+    const t = r < thresh[0] ? transforms[0]
+            : r < thresh[1] ? transforms[1]
+            : r < thresh[2] ? transforms[2]
+            :                 transforms[3];
+    const nx = t[0]*x + t[1]*y + t[4];
+    const ny = t[2]*x + t[3]*y + t[5];
+    x = nx; y = ny;
+    xs[i] = x;
+    ys[i] = y;
+  }
+
+  return { xs, ys };
+}
+
+// ── Rendering ─────────────────────────────────────────────────────
+function lerpColor(a, b, t) {
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+}
+
+function sampleGradient(stops, t) {
+  if (t <= stops[0][0]) return stops[0][1];
+  const last = stops[stops.length-1];
+  if (t >= last[0]) return last[1];
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const alpha = (t - stops[i-1][0]) / (stops[i][0] - stops[i-1][0]);
+      return lerpColor(stops[i-1][1], stops[i][1], alpha);
+    }
+  }
+}
+
+function buildLUT(themeName, size = 512) {
+  const stops = THEMES[themeName];
+  const lut = new Uint8Array(size * 3);
+  for (let i = 0; i < size; i++) {
+    const [r,g,b] = sampleGradient(stops, i / (size - 1));
+    lut[i*3]   = Math.min(255, r + 0.5) | 0;
+    lut[i*3+1] = Math.min(255, g + 0.5) | 0;
+    lut[i*3+2] = Math.min(255, b + 0.5) | 0;
+  }
+  return lut;
+}
+
+function drawFern(xs, ys, brightness, themeName) {
+  const W = canvas.width, H = canvas.height;
+
+  // Compute data bounds with a small pad so nothing clips
+  let xlo=Infinity, xhi=-Infinity, ylo=Infinity, yhi=-Infinity;
+  for (let i = 0; i < xs.length; i++) {
+    if (xs[i] < xlo) xlo = xs[i];
+    if (xs[i] > xhi) xhi = xs[i];
+    if (ys[i] < ylo) ylo = ys[i];
+    if (ys[i] > yhi) yhi = ys[i];
+  }
+  const px = (xhi - xlo) * 0.06, py = (yhi - ylo) * 0.04;
+  xlo -= px; xhi += px; ylo -= py; yhi += py;
+
+  // Fit inside canvas, preserving aspect ratio
+  const dW = xhi - xlo, dH = yhi - ylo;
+  let sx, sy, ox, oy;
+  if (dW / dH > W / H) {
+    sx = W / dW; sy = sx;
+    ox = 0; oy = (H - dH * sy) * 0.5;
+  } else {
+    sy = H / dH; sx = sy;
+    ox = (W - dW * sx) * 0.5; oy = 0;
+  }
+
+  // Accumulate hit density
+  const density = new Uint32Array(W * H);
+  for (let i = 0; i < xs.length; i++) {
+    const px = (xs[i] - xlo) * sx + ox | 0;
+    const py = H - ((ys[i] - ylo) * sy + oy) | 0;
+    if (px >= 0 && px < W && py >= 0 && py < H)
+      density[py * W + px]++;
+  }
+
+  // Find peak density for normalisation
+  let maxD = 0;
+  for (let i = 0; i < density.length; i++)
+    if (density[i] > maxD) maxD = density[i];
+
+  // Build colour LUT for this theme
+  const lut    = buildLUT(themeName);
+  const lutMax = lut.length / 3 - 1;
+  const logMax = Math.log1p(maxD);
+  const bg     = BGS[themeName];
+
+  // Render each pixel
+  const img  = ctx.createImageData(W, H);
+  const data = img.data;
+
+  for (let i = 0; i < W * H; i++) {
+    const cnt = density[i];
+    if (cnt > 0) {
+      let t = Math.log1p(cnt) / logMax * brightness;
+      if (t > 1) t = 1;
+      const li = (t * lutMax | 0) * 3;
+      data[i*4]   = lut[li];
+      data[i*4+1] = lut[li+1];
+      data[i*4+2] = lut[li+2];
+      data[i*4+3] = 255;
+    } else {
+      data[i*4]   = bg[0];
+      data[i*4+1] = bg[1];
+      data[i*4+2] = bg[2];
+      data[i*4+3] = 255;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+}
+
+// ── Render pipeline ───────────────────────────────────────────────
+let renderTimer = null;
+
+function scheduleRender(delay = 55) {
+  clearTimeout(renderTimer);
+  overlay.className = 'busy';
+  overlay.textContent = 'computing…';
+  renderTimer = setTimeout(doRender, delay);
+}
+
+function doRender() {
+  const n          = POINT_COUNTS[state.points - 1];
+  const transforms = buildTransforms(state.curl, state.lean, state.width, state.fullness);
+  const { xs, ys } = runIFS(n, transforms);
+  drawFern(xs, ys, state.brightness, theme);
+  overlay.className = '';
+  overlay.textContent = `${POINT_LABELS[state.points-1]} pts`;
+}
+
+// ── Slider helpers ────────────────────────────────────────────────
+function refreshSlider(id, val) {
+  const sl  = document.getElementById('s-' + id);
+  const vl  = document.getElementById('v-' + id);
+  const min = +sl.min, max = +sl.max;
+  const pct = (val - min) / (max - min) * 100;
+  sl.style.setProperty('--fill', pct.toFixed(1) + '%');
+  vl.textContent = (id === 'points') ? POINT_LABELS[val - 1] : val.toFixed(2);
+}
+
+function setSlider(id, val) {
+  document.getElementById('s-' + id).value = val;
+  state[id] = val;
+  refreshSlider(id, val);
+}
+
+['curl','width','lean','fullness','points','brightness'].forEach(id => {
+  const sl = document.getElementById('s-' + id);
+  refreshSlider(id, +sl.value);          // init display
+
+  sl.addEventListener('input', () => {
+    const val = +sl.value;
+    state[id] = val;
+    refreshSlider(id, val);
+    scheduleRender();
+  });
+});
+
+// ── Theme buttons ─────────────────────────────────────────────────
+document.getElementById('theme-grid').addEventListener('click', e => {
+  const btn = e.target.closest('[data-theme]');
+  if (!btn) return;
+  document.querySelectorAll('[data-theme]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  theme = btn.dataset.theme;
+  document.documentElement.style.setProperty('--accent', ACCENTS[theme]);
+  scheduleRender();
+});
+
+// ── Preset buttons ────────────────────────────────────────────────
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.preset;
+    if (key === 'random') {
+      const p = {
+        curl:     Math.random(),
+        width:    Math.random(),
+        lean:     (Math.random() * 2 - 1),
+        fullness: Math.random(),
+      };
+      Object.entries(p).forEach(([k, v]) => setSlider(k, +v.toFixed(2)));
+    } else {
+      const p = PRESETS[key];
+      Object.entries(p).forEach(([k, v]) => setSlider(k, v));
+    }
+    scheduleRender();
+  });
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === ' ')  { e.preventDefault(); scheduleRender(0); }
+  if (e.key === 'r' || e.key === 'R') {
+    document.querySelector('[data-preset="random"]').click();
+  }
+});
+
+// ── Resize ────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  resizeCanvas();
+  scheduleRender(80);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────
+resizeCanvas();
+doRender();
+</script>
+</body>
+</html>
